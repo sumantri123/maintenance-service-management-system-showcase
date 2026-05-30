@@ -1,0 +1,289 @@
+var CSRF_TOKEN = $('meta[name="csrf-token"]').attr('content');
+var dataTable;
+
+$(document).ready(function () {	
+	loadData();		   
+});
+
+$('button#tambah').on('click', function () {   
+
+	$('#modal_label').text('Form Tambah / Ubah Data');
+	$('#method_field').val("POST");
+	$(".modal-form").modal('show');		
+
+	clearModal();	
+});
+
+function loadData() {
+			
+	dataTable = $('#aktivitas_datatable').DataTable({
+		processing: true,
+		ajax: {
+			url: routeData,
+			method: 'GET',
+			headers: {
+				'X-CSRF-TOKEN': CSRF_TOKEN
+			},
+			dataType: 'json',
+			error: function (xhr, textStatus, thrownError) {
+				console.error('Error loading data:', {
+					status: xhr.status,
+					statusText: xhr.statusText,
+					response: xhr.responseText
+				});
+				alert('Error loading data!\nStatus: ' + xhr.status + '\nError: ' + xhr.responseText);
+			}
+		},
+		columns: [{
+			title: "Nama Pegawai",
+			data: "nama",
+			visible: true,
+			sortable: true,				
+			render: function (data, type, full, meta) {
+				return titleCase(full.nama);
+			}
+		},{
+			title: "Nip",
+			data: "nip",
+			visible: true,
+			sortable: true,				
+			render: function (data, type, full, meta) {
+				return data;
+			}
+		},{
+			title: "Role",
+			data: "role",
+			visible: true,
+			sortable: true,				
+			render: function (data, type, full, meta) {
+				var result = '';
+				if(data == 1){
+					result += 'Admin';					
+				} else {
+					result += 'Teknisi';					
+				}
+
+				return result;
+			}
+		}, {
+			title: "Status",
+			data: "status",
+			visible: true,
+			width: "15%",
+			sortable: true,
+			class: "text-center",
+			render: function (data, type, full, meta) {
+				
+				var result = '';
+				if(data == 'y'){
+					result += '<div class="form-check form-switch">';
+					result += '<input class="form-check-input" type="checkbox" id="flexSwitchCheckChecked" onclick="nonAktif(\''+full.id+'\')" checked>';
+					result += '<label class="form-check-label" id="aktif" for="flexSwitchCheckChecked">Aktif</label>';
+					result += '</div>';
+				} else {
+					result += '<div class="form-check form-switch">';
+					result += '<input class="form-check-input" type="checkbox" id="flexSwitchCheckChecked" onclick="Aktif(\''+full.id+'\')">';
+					result += '	<label class="form-check-label" id="nonaktif" for="flexSwitchCheckChecked">Non Aktif</label>';
+					result += '</div>';
+				}
+
+				return result;
+				
+			}
+		}, {
+			title: "Aksi",
+			data: "id",
+			visible: true,
+			sortable: false,
+			width: "20%",
+			class: "text-center",
+			render: function (data, type, full, meta) {
+				var result = '';                                        
+				result += '<button type="button" class="btn btn-info btn-search"><i class="bx bx-search-alt me-0"></i></button>&nbsp;';					
+				result += '<button type="button" class="btn btn-warning btn-edit"><i class="bx bx-edit-alt me-0"></i></button>&nbsp;';					
+				if(data.id_role == 2){
+					result += '<button type="button" class="btn btn-danger btn-hapus"><i class="bx bx-trash-alt me-0"></i></button>';					
+				}
+
+				return result;			
+			}
+		}],		
+	});
+
+	$('#aktivitas_datatable').on('click', '.btn-hapus', function () {
+        let data = dataTable.row($(this).parents('tr')).data();
+        Lobibox.confirm({
+			iconClass: true,
+			title: 'Delete Data',                        
+			msg: 'Yakin Hapus Data "' + data.nama + '"?',
+			callback: function ($this, type, ev) {
+				if(type=='yes'){
+					if(data.total > 0){
+						info_noti("Pegawai punya transaksi, tidak bisa dihapus. Silakan nonaktifkan."); 
+					} else {						
+						deleteProses(data.id);
+					}
+				}        
+			}
+		});
+    });
+
+    $('#aktivitas_datatable').on('click', '.btn-edit', function () {
+		let data = dataTable.row($(this).parents('tr')).data();
+		$('#id').val(data.id);					
+		$('#nama').val(data.nama);
+		$('#nip').val(data.nip);
+		$('#role').val(data.role);
+		$('#password').val(data.password);
+
+		$('#modal_label').text('Form Tambah / Ubah Data');
+		$('#method_field').val("POST");
+		$(".modal-form").modal('show');
+    });
+
+	$('#aktivitas_datatable').on('click', '.btn-search', function () {
+		let data = dataTable.row($(this).parents('tr')).data();
+		let id = data.id;					
+		
+    		detailRoute = routeDetail.replace('PARAMETER', id);
+		window.location.href = detailRoute;
+    });
+}
+
+
+$('#data_form').submit(function(e) {
+	e.preventDefault();
+	
+	var method = $('#method_field').val();
+	var action_url = routeSimpan;
+	var action_type = "Tambah";		
+	var tipe = $('#id').val();
+
+	if (tipe !== "") {
+		action_url = routeUbah;
+		action_type = "Ubah";
+	}				
+
+	var formData = new FormData(this);        
+	var form = $('#data_form');
+	
+	if (form.valid() == true) {    
+					
+		$.ajax({
+			type:'POST',
+			url: action_url,
+			data: formData,
+			cache:false,
+			contentType: false,
+			processData: false,
+			beforeSend: function(){
+				sweetAlertLoading('Memproses');
+			},				
+			success: (data) => {	
+				Swal.close();	
+				if (data.status == 'success') {
+					success_noti(data.message);   										
+					$('.modal-form').modal('toggle');
+					this.reset();
+					dataTable.ajax.reload(null, false);
+				} else {
+					error_noti(data.message); 
+				}
+
+			},
+			error: function (error) {					
+				error_noti(data.message);
+				$('.modal-form').modal('toggle');
+				this.reset();
+			}
+		});
+	} else {
+		
+		error_noti('Mohon Isi Form Dengan Lengkap, Cek Input Form Yang Berwarna Merah');
+	} 
+
+});
+
+
+function deleteProses(id) {
+	hapusRoute = routeHapus.replace('PARAMETER', id);					
+	$.ajax({
+		type: 'GET',
+		url: hapusRoute,
+		dataType: 'JSON',            
+
+		success: function (data) {
+			if (data.status == 'success') {
+				success_noti(data.message);
+				dataTable.ajax.reload(null, false);
+			} else if (data.status == 'error') {
+				error_noti(data.message);
+			} else {
+				error_noti('Data Gagal Dihapus (Kesalahan Sistem)');
+			}
+		},
+
+		error: function (xmlhttprequest, textstatus, message) {
+			error_noti('Koneksi Ke Server Gagal, Mohon Refresh Halaman')
+		}
+	});
+}
+
+function nonAktif(id){
+	
+	$.ajax({
+		type: 'post',
+		url: routeNonAktif,
+		dataType: 'JSON',
+		data: {
+			_token: CSRF_TOKEN,
+			'id': id
+		},
+		success: function (data) {
+			
+			if (data.status == 'success') {					
+				success_noti('Data berhasil diupdate');
+				dataTable.ajax.reload(null, false);
+			}else if(data.status == 'error'){
+				error_noti('update Failed');
+			}else {
+				error_noti('Error Koneksi');                     
+			}
+		},
+
+		error: function (xmlhttprequest, textstatus, message) {
+			error_noti('Koneksi Ke Server Gagal, Mohon Refresh Halaman');
+		}
+	});
+}
+
+
+function Aktif(id){
+	
+	$.ajax({
+		type: 'post',
+		url: routeAktif,
+		dataType: 'JSON',
+		data: {
+			_token: CSRF_TOKEN,
+			'id': id
+		},
+		success: function (data) {
+			
+			if (data.status == 'success') {
+				success_noti('Data berhasil diupdate');
+				dataTable.ajax.reload(null, false);
+			}else if(data.status == 'error'){
+				error_noti('update Failed');
+			}else {
+				error_noti('Error Koneksi');                     
+			}
+		},
+
+		error: function (xmlhttprequest, textstatus, message) {
+			error_noti('Koneksi Ke Server Gagal, Mohon Refresh Halaman');
+		}
+	});
+}
+
+
